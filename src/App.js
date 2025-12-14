@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import "./App.css";
+import { supabase } from "./supabaseClient";
+
 
 function App() {
   const [text, setText] = useState("");
@@ -8,60 +10,83 @@ function App() {
   const [description, setDescription] = useState("");
   const [language, setLanguage] = useState("");
   const [filterLang, setFilterLang] = useState("");
-  const [editIndex, setEditIndex] = useState(null);
+  const [editId, setEditId] = useState(null);
 
-
-
-
-  // useEffects 
   useEffect(() => {
-    const savedSnippets = localStorage.getItem("snippets");
-    if (savedSnippets) {
-      setSnippets(JSON.parse(savedSnippets));
-    }
+  fetchSnippets();
   }, []);
 
 
-  useEffect(() => {
-      localStorage.setItem("snippets", JSON.stringify(snippets));
-  }, [snippets]);
-
-
-
-
-
-
   // Function to save a new snippet
-  function saveSnippet() {
-      if (title.trim() === "" || description.trim() === "" || language === "" || text.trim() === "" ) return;
+  async function saveSnippet() {
+    if (
+      title.trim() === "" ||
+      description.trim() === "" ||
+      language === "" ||
+      text.trim() === ""
+    ) return;
 
-      const newSnippet = {
-        title,
-        description,
-        language,
-        code: text,
-      };
+    const snippetData = {
+      title,
+      description,
+      language,
+      code: text,
+    };
 
-      if (editIndex === null) {
-          setSnippets([...snippets, newSnippet]);
-      } else {
-          const updated = [...snippets];
-          updated[editIndex] = newSnippet;
-          setSnippets(updated);
-          setEditIndex(null);
-      }
+    let error;
 
-      setTitle("");
-      setDescription("");
-      setLanguage("");
-      setText("");
+    if (editId === null) {
+      ({ error } = await supabase
+        .from("snippets")
+        .insert([snippetData]));
+    } else {
+      ({ error } = await supabase
+        .from("snippets")
+        .update(snippetData)
+        .eq("id", editId));
     }
 
-  // Function to delete a snippet
-  function deleteSnippet(index) {
-    const newSnippets = snippets.filter((_, i) => i !== index);
-    setSnippets(newSnippets);
+    if (error) {
+      console.log(error);
+      return;
+    }
+
+    setEditId(null);
+    setTitle("");
+    setDescription("");
+    setLanguage("");
+    setText("");
+
+    fetchSnippets(); // reload from DB
   }
+
+
+
+  // Function to delete a snippet
+  async function deleteSnippet(id) {
+    const { error } = await supabase
+      .from("snippets")
+      .delete()
+      .eq("id", id);
+
+    if (error) {
+      console.log(error);
+      return;
+    }
+
+    fetchSnippets(); // reload from DB
+  }
+
+  async function fetchSnippets() {
+    const { data, error } = await supabase
+      .from("snippets")
+      .select("*")
+      .order("id", { ascending: false });
+
+    if (error) console.log(error);
+    else setSnippets(data);
+  }
+
 
   return (
     <div className="app">
@@ -116,7 +141,7 @@ function App() {
 
         <br />
         <button onClick={saveSnippet}>
-          {editIndex === null ? "Save Snippet" : "Update Snippet"}
+          {editId === null ? "Save Snippet" : "Update Snippet"}
         </button>
     </div>
 
@@ -140,12 +165,13 @@ function App() {
               setDescription(item.description);
               setLanguage(item.language);
               setText(item.code);
-              setEditIndex(index);
+              setEditId(item.id);
             }}>
               Edit
           </button>
 
-          <button onClick={() => deleteSnippet(index)}>Delete</button>
+          <button onClick={() => deleteSnippet(item.id)}>Delete</button>
+
         </div>
       ))}
       </div>
